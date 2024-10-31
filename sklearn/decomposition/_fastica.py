@@ -13,6 +13,7 @@ from numbers import Integral, Real
 
 import numpy as np
 from scipy import linalg
+from tqdm import tqdm
 
 from ..base import (
     BaseEstimator,
@@ -112,7 +113,7 @@ def _ica_par(X, tol, g, fun_args, max_iter, w_init):
     W = _sym_decorrelation(w_init)
     del w_init
     p_ = float(X.shape[1])
-    for ii in range(max_iter):
+    for ii in tqdm(range(max_iter)):
         gwtx, g_wtx = g(np.dot(W, X), fun_args)
         W1 = _sym_decorrelation(np.dot(gwtx, X.T) / p_ - g_wtx[:, np.newaxis] * W)
         del gwtx, g_wtx
@@ -502,7 +503,7 @@ class FastICA(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
 
     _parameter_constraints: dict = {
         "n_components": [Interval(Integral, 1, None, closed="left"), None],
-        "algorithm": [StrOptions({"parallel", "deflation"})],
+        "algorithm": [StrOptions({"parallel", "deflation", "torch"})],
         "whiten": [
             StrOptions({"arbitrary-variance", "unit-variance"}),
             Options(bool, {False}),
@@ -622,6 +623,9 @@ class FastICA(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
                 d, u = d[sort_indices], u[:, sort_indices]
             elif self.whiten_solver == "svd":
                 u, d = linalg.svd(XT, full_matrices=False, check_finite=False)[:2]
+            # elif self.whiten_solver == "torch_svd":
+            #     import torch
+            #     u, d = torch.linalg.svd(XT, full_matrices=False)[:2]
 
             # Give consistent eigenvectors for both svd solvers
             u *= np.sign(u[0])
@@ -663,6 +667,9 @@ class FastICA(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator):
             W, n_iter = _ica_par(X1, **kwargs)
         elif self.algorithm == "deflation":
             W, n_iter = _ica_def(X1, **kwargs)
+        elif self.algorithm == "torch":
+            from ._fastica_torch import _ica_torch
+            W, n_iter = _ica_torch(X1, **kwargs)
         del X1
 
         self.n_iter_ = n_iter
